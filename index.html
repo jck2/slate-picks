@@ -526,11 +526,14 @@ function gamesSection() {
   ];
 }
 
-function resultChip(side, status) {
+/** Colored for whoever the result favors, worded for whoever picked the line. */
+function resultChip(side, status, picker) {
   if (status === 'pre' || !side) return null;
   if (side === 'Push') return h('span', { class: 'chip plain' }, status === 'live' ? 'Even' : 'Push');
-  const word = status === 'live' ? ' ahead' : ' right';
-  return h('span', { class: 'chip', style: { '--chip': state.colors[side] } }, side + word);
+  const who = picker || side;
+  const good = who === side;
+  const word = status === 'live' ? (good ? ' ahead' : ' behind') : (good ? ' right' : ' wrong');
+  return h('span', { class: 'chip', style: { '--chip': state.colors[side] } }, who + word);
 }
 
 function pickRow(p, canUndo) {
@@ -540,7 +543,7 @@ function pickRow(p, canUndo) {
   return h('div', { class: 'pick' },
     h('span', { class: 'bar', style: { '--bar': state.colors[p.picker] || 'var(--line)' } }),
     h('span', { class: 'line' }, p.line),
-    resultChip(p.side, p.status),
+    resultChip(p.side, p.status, p.picker),
     h('span', { class: 'who' }, (p.picker ? p.picker + "'s pick" : 'Pick') + (when ? ' · ' + when : '')),
     canUndo && h('button', {
       class: 'undo',
