@@ -199,6 +199,7 @@ const API = location.hostname === 'localhost'
   ? '/api'
   : 'https://script.google.com/macros/s/AKfycbzAHpfSTPet60BGIOwJ2jESNG5vOXnS0TeqHS7FHazx_BF0ro8jjhPCMYDFelnRbkAYGg/exec';
 const STORE_KEY = 'slate-picks-login';
+const STATE_KEY = 'slate-picks-state';
 const POLL_WAITING_MS = 30000;
 const POLL_LIVE_MS = 60000;
 
@@ -208,6 +209,9 @@ let login = readLogin();
 let state = null;
 let notice = '';
 let busy = false;
+// True while the screen shows data that may be out of date: the copy saved on this device,
+// or a page left open past midnight. Picks stay locked until the sheet answers.
+let showingSaved = false;
 let pollTimer = null;
 let lastSlateOpen = false;
 // Wide screens show the roster card beside the picks, open by default. After that, the
@@ -222,10 +226,31 @@ function readLogin() {
 }
 function saveLogin(value) {
   login = value;
+  if (!value) showingSaved = false;
   try {
-    if (value) localStorage.setItem(STORE_KEY, JSON.stringify(value));
-    else localStorage.removeItem(STORE_KEY);
+    if (value) {
+      localStorage.setItem(STORE_KEY, JSON.stringify(value));
+    } else {
+      localStorage.removeItem(STORE_KEY);
+      localStorage.removeItem(STATE_KEY);
+    }
   } catch (e) { /* Private windows can refuse storage; the login just won't stick. */ }
+}
+
+/** The last screen's data, so the page can draw at once while the sheet answers. */
+function readSavedState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STATE_KEY));
+    return saved && saved.you === login.player ? saved : null;
+  } catch (e) { return null; }
+}
+function saveState(value) {
+  try { localStorage.setItem(STATE_KEY, JSON.stringify(value)); } catch (e) { /* The next open just waits for the sheet. */ }
+}
+
+/** Today in the sheet's time zone, in the same form as state.date. */
+function easternDate() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
 }
 
 /** Builds elements with textContent only, since sheet and ESPN text is not trusted as HTML. */
@@ -286,7 +311,11 @@ async function send(body, { quiet = false } = {}) {
       showLogin(res.error);
       return;
     }
-    if (res.day) state = res;
+    if (res.day) {
+      state = res;
+      showingSaved = false;
+      saveState(res);
+    }
     notice = res.ok ? '' : res.error || 'Something went wrong. Try again.';
   } catch (e) {
     notice = "Couldn't reach the sheet. Check your connection and try again.";
@@ -302,7 +331,7 @@ function schedulePoll() {
   const d = state.day;
   const waiting = d.status === 'picking' && d.turn !== state.you;
   const live = d.picks.some(p => p.status === 'live');
-  const delay = waiting ? POLL_WAITING_MS : live ? POLL_LIVE_MS : 0;
+  const delay = waiting || showingSaved ? POLL_WAITING_MS : live ? POLL_LIVE_MS : 0;
   if (delay) pollTimer = setTimeout(refresh, delay);
 }
 
@@ -344,6 +373,7 @@ async function showLogin(message) {
           }
           saveLogin({ player: chosen, passcode });
           state = res;
+          saveState(res);
           notice = '';
           render();
           schedulePoll();
@@ -467,7 +497,7 @@ function statusCard() {
 
 function canPick() {
   const d = state.day;
-  return d.status === 'picking' && (!d.turn || d.turn === state.you) && !busy;
+  return d.status === 'picking' && (!d.turn || d.turn === state.you) && !busy && !showingSaved;
 }
 
 function sideButton(game, side, other, isHome) {
@@ -514,7 +544,7 @@ function pickRow(p, canUndo) {
     h('span', { class: 'who' }, (p.picker ? p.picker + "'s pick" : 'Pick') + (when ? ' · ' + when : '')),
     canUndo && h('button', {
       class: 'undo',
-      disabled: busy,
+      disabled: busy || showingSaved,
       onclick: () => send({ action: 'undo', expected: state.day.made }),
     }, 'Undo'),
   );
@@ -564,18 +594,22 @@ function render() {
   const mine = d.status === 'picking' && (!d.turn || d.turn === state.you);
   const rosters = rostersSection();
   const beside = sideColumn.matches && rosters;
+  // Never show an earlier day's games as today's.
+  const earlierDay = showingSaved && state.date !== easternDate();
   const picking = [
     notice && h('div', { class: 'error', role: 'alert' }, notice),
     scoreCard(),
     !beside && rosters,
-    statusCard(),
-    mine ? [gamesSection(), picksSection()] : [picksSection(), gamesSection()],
-    state.lastSlate && h('div', { class: 'section-title' }, h('h3', {}, 'Last slate')),
-    lastSlateSection(),
+    earlierDay ? h('section', { class: 'status plain', 'aria-live': 'polite' }, h('h2', {}, "Getting today's games…")) : [
+      statusCard(),
+      mine ? [gamesSection(), picksSection()] : [picksSection(), gamesSection()],
+      state.lastSlate && h('div', { class: 'section-title' }, h('h3', {}, 'Last slate')),
+      lastSlateSection(),
+    ],
   ].flat(Infinity).filter(Boolean);
   app.replaceChildren(...[
     h('div', { class: 'top' },
-      h('h1', {}, 'Slate Picks · ' + dayOf(state.date)),
+      h('h1', {}, 'Slate Picks · ' + (showingSaved ? 'Updating…' : dayOf(state.date))),
       h('button', { class: 'link', onclick: signOut }, 'Sign out ' + state.you)),
     beside ? h('div', { class: 'with-side' }, h('div', {}, picking), rosters) : picking,
   ].flat(Infinity));
@@ -639,12 +673,29 @@ function openConfirm(game, side, other, isHome) {
 
 dialog.addEventListener('close', schedulePoll);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) refresh();
-  else clearTimeout(pollTimer);
+  if (document.hidden) {
+    clearTimeout(pollTimer);
+    return;
+  }
+  if (state && state.date !== easternDate()) {
+    showingSaved = true;
+    render();
+  }
+  refresh();
 });
 
-if (login) refresh();
-else showLogin();
+if (login) {
+  // The request goes first, so a saved copy that fails to draw can't stop the fresh data.
+  refresh();
+  const saved = readSavedState();
+  if (saved) {
+    state = saved;
+    showingSaved = true;
+    render();
+  }
+} else {
+  showLogin();
+}
 </script>
 </body>
 </html>
