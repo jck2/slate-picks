@@ -205,7 +205,8 @@ let notice = '';
 let busy = false;
 let pollTimer = null;
 let lastSlateOpen = false;
-let rostersOpen = false;
+// Open by default where there's room for it. After that, the viewer's own toggle sticks.
+let rostersOpen = window.matchMedia('(min-width: 768px)').matches;
 
 // --- Small helpers ---
 
