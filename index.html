@@ -129,6 +129,17 @@
   details summary { padding: 14px 16px; cursor: pointer; font-weight: 600; font-size: 15px; }
   details[open] summary { border-bottom: 1px solid var(--line); }
 
+  .rosters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; font-size: 13px; line-height: 1.25; }
+  .squad-head { display: flex; justify-content: space-between; gap: 6px; padding: 5px 8px; border-radius: 6px; font-size: 14px; font-weight: 700; color: var(--on-player); background: var(--squad); }
+  .squad-list { list-style: none; margin: 0; padding: 0; }
+  .squad-list li { display: flex; justify-content: space-between; gap: 6px; padding: 4px 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  .squad-list li:last-child { border-bottom: 0; }
+  .squad-list span:last-child { flex: none; font-weight: 600; }
+  .squad-list.split { font-weight: 600; }
+  .bench-title { margin: 12px 8px 2px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .bench { color: var(--muted); }
+  .bench span:last-child { font-weight: 500; }
+
   label { display: block; font-weight: 600; margin: 16px 0 6px; }
   .names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .name { min-height: 52px; background: transparent; border: 1.5px solid var(--line); border-radius: 10px; font-weight: 600; }
@@ -194,6 +205,7 @@ let notice = '';
 let busy = false;
 let pollTimer = null;
 let lastSlateOpen = false;
+let rostersOpen = false;
 
 // --- Small helpers ---
 
@@ -373,6 +385,34 @@ function scoreCard() {
   );
 }
 
+function squadRow(player) {
+  return h('li', {}, h('span', {}, player.name), h('span', {}, player.points.toFixed(1)));
+}
+
+function squadColumn(name) {
+  const squad = state.roster[name];
+  return h('div', {},
+    h('div', { class: 'squad-head', style: { '--squad': state.colors[name] } },
+      h('span', {}, name), h('span', {}, squad.total.toFixed(1))),
+    h('ul', { class: 'squad-list split' },
+      squadRow({ name: 'Player pts', points: squad.playerPoints }),
+      squadRow({ name: 'Additional pts', points: squad.additional })),
+    h('p', { class: 'bench-title' }, 'Main roster'),
+    h('ul', { class: 'squad-list' }, squad.players.map(squadRow)),
+    squad.bench.length > 0 && [
+      h('p', { class: 'bench-title' }, 'Bench, not counted'),
+      h('ul', { class: 'squad-list bench' }, squad.bench.map(squadRow)),
+    ]);
+}
+
+/** Every player's league points, both managers side by side. Read-only: the sheet is the source. */
+function rostersSection() {
+  if (!state.roster) return null;
+  return h('details', { class: 'card', open: rostersOpen, ontoggle: e => { rostersOpen = e.target.open; } },
+    h('summary', {}, 'League scoring by player'),
+    h('div', { class: 'rosters' }, squadColumn(state.you), squadColumn(state.other)));
+}
+
 function nextLine() {
   const n = state.next;
   if (!n) return h('p', { class: 'next' }, 'No more game days on the slate sheet.');
@@ -520,6 +560,7 @@ function render() {
       h('button', { class: 'link', onclick: signOut }, 'Sign out ' + state.you)),
     notice && h('div', { class: 'error', role: 'alert' }, notice),
     scoreCard(),
+    rostersSection(),
     statusCard(),
     mine ? [gamesSection(), picksSection()] : [picksSection(), gamesSection()],
     state.lastSlate && h('div', { class: 'section-title' }, h('h3', {}, 'Last slate')),
