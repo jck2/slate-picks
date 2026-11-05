@@ -140,6 +140,11 @@
   .bench { color: var(--muted); }
   .bench span:last-child { font-weight: 500; }
 
+  @media (min-width: 900px) {
+    main:has(.with-side) { max-width: 960px; }
+    .with-side { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; align-items: start; }
+  }
+
   label { display: block; font-weight: 600; margin: 16px 0 6px; }
   .names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .name { min-height: 52px; background: transparent; border: 1.5px solid var(--line); border-radius: 10px; font-weight: 600; }
@@ -205,8 +210,10 @@ let notice = '';
 let busy = false;
 let pollTimer = null;
 let lastSlateOpen = false;
-// Open by default where there's room for it. After that, the viewer's own toggle sticks.
-let rostersOpen = window.matchMedia('(min-width: 768px)').matches;
+// Wide screens show the roster card beside the picks, open by default. After that, the
+// viewer's own toggle sticks.
+const sideColumn = window.matchMedia('(min-width: 900px)');
+let rostersOpen = sideColumn.matches;
 
 // --- Small helpers ---
 
@@ -555,19 +562,25 @@ function render() {
   if (!state) return;
   const d = state.day;
   const mine = d.status === 'picking' && (!d.turn || d.turn === state.you);
-  app.replaceChildren(...[
-    h('div', { class: 'top' },
-      h('h1', {}, 'Slate Picks · ' + dayOf(state.date)),
-      h('button', { class: 'link', onclick: signOut }, 'Sign out ' + state.you)),
+  const rosters = rostersSection();
+  const beside = sideColumn.matches && rosters;
+  const picking = [
     notice && h('div', { class: 'error', role: 'alert' }, notice),
     scoreCard(),
-    rostersSection(),
+    !beside && rosters,
     statusCard(),
     mine ? [gamesSection(), picksSection()] : [picksSection(), gamesSection()],
     state.lastSlate && h('div', { class: 'section-title' }, h('h3', {}, 'Last slate')),
     lastSlateSection(),
-  ].flat(Infinity).filter(Boolean));
+  ].flat(Infinity).filter(Boolean);
+  app.replaceChildren(...[
+    h('div', { class: 'top' },
+      h('h1', {}, 'Slate Picks · ' + dayOf(state.date)),
+      h('button', { class: 'link', onclick: signOut }, 'Sign out ' + state.you)),
+    beside ? h('div', { class: 'with-side' }, h('div', {}, picking), rosters) : picking,
+  ].flat(Infinity));
 }
+sideColumn.addEventListener('change', render);
 
 function signOut() {
   clearTimeout(pollTimer);
