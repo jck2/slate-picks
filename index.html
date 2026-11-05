@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#141820">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Picks">
+<title>Slate Picks</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-180.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f3ef;
+    --card: #ffffff;
+    --ink: #181a1f;
+    --muted: #5f636b;
+    --line: #dddcd6;
+    --accent: #c9571a;
+    --on-accent: #ffffff;
+    --danger-bg: #fbe6e1;
+    --danger-ink: #8c2412;
+    --on-player: #181a1f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141820;
+      --card: #1e232d;
+      --ink: #f0efea;
+      --muted: #a2a6ae;
+      --line: #333945;
+      --accent: #f08636;
+      --on-accent: #181a1f;
+      --danger-bg: #4a221a;
+      --danger-ink: #ffc9bb;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  main {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 12px 16px calc(32px + env(safe-area-inset-bottom));
+  }
+  h1, h2, h3, p { margin: 0; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:disabled { cursor: default; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  .top h1 { font-size: 16px; font-weight: 600; }
+  .link { background: none; border: 0; padding: 8px 0; color: var(--muted); font-size: 14px; text-decoration: underline; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+  .error { background: var(--danger-bg); color: var(--danger-ink); border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; font-weight: 500; }
+
+  .score h2 { font-size: 24px; line-height: 1.2; font-weight: 700; }
+  .score .row { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 14px; color: var(--muted); }
+  .score b { color: var(--ink); font-weight: 600; }
+
+  .status { border-radius: 12px; padding: 16px; margin-bottom: 12px; color: var(--on-player); background: var(--status, var(--card)); }
+  .status.plain { color: var(--ink); border: 1px solid var(--line); }
+  .status h2 { font-size: 22px; line-height: 1.2; font-weight: 700; }
+  .status p { margin-top: 4px; }
+  .status .next { margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent); font-weight: 600; }
+
+  .section-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 20px 0 8px; }
+  .section-title h3 { font-size: 15px; font-weight: 600; }
+
+  .game { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 12px; margin-bottom: 8px; }
+  .game .tip { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .sides { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: center; }
+  .at { font-size: 13px; color: var(--muted); }
+  .side {
+    min-height: 60px;
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    border: 1.5px solid var(--accent);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    overflow-wrap: anywhere;
+  }
+  .side .team { font-weight: 600; line-height: 1.2; text-align: center; }
+  .side .spread { font-size: 15px; color: var(--muted); }
+  .side:not(:disabled):active { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .side:disabled { border-color: var(--line); }
+  .side:disabled .team { color: var(--muted); font-weight: 500; }
+
+  .pick { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; gap: 2px 10px; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); }
+  .pick:last-child { border-bottom: 0; }
+  .bar { grid-row: 1 / span 3; border-radius: 0 4px 4px 0; background: var(--bar, var(--line)); }
+  .pick .line { font-weight: 600; overflow-wrap: anywhere; }
+  .pick .who { grid-column: 2; font-size: 14px; color: var(--muted); }
+  .chip {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: start;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    color: var(--on-player);
+    background: var(--chip, transparent);
+  }
+  .chip.plain { color: var(--muted); padding: 2px 0; }
+  .undo { grid-column: 3; grid-row: 2; justify-self: end; background: none; border: 0; padding: 4px 0; font-size: 14px; color: var(--accent); text-decoration: underline; }
+  .list { padding: 0; overflow: hidden; }
+
+  details.card { padding: 0; overflow: hidden; }
+  details summary { padding: 14px 16px; cursor: pointer; font-weight: 600; font-size: 15px; }
+  details[open] summary { border-bottom: 1px solid var(--line); }
+
+  label { display: block; font-weight: 600; margin: 16px 0 6px; }
+  .names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .name { min-height: 52px; background: transparent; border: 1.5px solid var(--line); border-radius: 10px; font-weight: 600; }
+  .name[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  input[type=text], input[type=password] {
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 12px;
+    font-size: 16px;
+    background: var(--bg);
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+  }
+  .primary {
+    width: 100%;
+    min-height: 52px;
+    margin-top: 16px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 700;
+  }
+  .primary:disabled { opacity: 0.55; }
+
+  dialog {
+    width: min(440px, calc(100vw - 32px));
+    padding: 16px;
+    border: 0;
+    border-radius: 16px;
+    background: var(--card);
+    color: var(--ink);
+  }
+  dialog::backdrop { background: rgb(0 0 0 / 0.55); }
+  dialog h2 { font-size: 20px; line-height: 1.25; }
+  .stepper { display: grid; grid-template-columns: 56px minmax(0, 1fr) 56px; gap: 8px; }
+  .stepper input { text-align: center; font-size: 20px; font-weight: 700; }
+  .step { min-height: 48px; border: 1.5px solid var(--line); border-radius: 10px; background: transparent; font-weight: 700; }
+  .secondary { width: 100%; min-height: 48px; margin-top: 8px; border: 0; background: transparent; color: var(--muted); }
+  .loading { padding: 48px 0; text-align: center; color: var(--muted); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+</style>
+</head>
+<body>
+<main id="app"><p class="loading">Loading…</p></main>
+<dialog id="confirm"></dialog>
+<script>
+'use strict';
+
+// The Google script behind this page. Writes need the player's own passcode.
+const API = location.hostname === 'localhost'
+  ? '/api'
+  : 'https://script.google.com/macros/s/AKfycbzAHpfSTPet60BGIOwJ2jESNG5vOXnS0TeqHS7FHazx_BF0ro8jjhPCMYDFelnRbkAYGg/exec';
+const STORE_KEY = 'slate-picks-login';
+const POLL_WAITING_MS = 30000;
+const POLL_LIVE_MS = 60000;
+
+const app = document.getElementById('app');
+const dialog = document.getElementById('confirm');
+let login = readLogin();
+let state = null;
+let notice = '';
+let busy = false;
+let pollTimer = null;
+let lastSlateOpen = false;
+
+// --- Small helpers ---
+
+function readLogin() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) { return null; }
+}
+function saveLogin(value) {
+  login = value;
+  try {
+    if (value) localStorage.setItem(STORE_KEY, JSON.stringify(value));
+    else localStorage.removeItem(STORE_KEY);
+  } catch (e) { /* Private windows can refuse storage; the login just won't stick. */ }
+}
+
+/** Builds elements with textContent only, since sheet and ESPN text is not trusted as HTML. */
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  Object.entries(props || {}).forEach(([k, v]) => {
+    if (k === 'class') el.className = v;
+    else if (k === 'style') Object.entries(v).forEach(([p, val]) => el.style.setProperty(p, val));
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (v === true) el.setAttribute(k, '');
+    else if (v !== false && v !== null && v !== undefined) el.setAttribute(k, v);
+  });
+  kids.flat(Infinity).forEach(kid => { if (kid !== null && kid !== undefined && kid !== false) el.append(kid); });
+  return el;
+}
+
+const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+const timeOf = iso => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const dayOf = ymd => new Date(ymd + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+
+function spreadText(n) {
+  if (n === null || n === undefined) return 'No line yet';
+  if (n === 0) return 'pk';
+  return (n > 0 ? '+' : '') + n;
+}
+
+function parseSpread(text) {
+  const t = String(text).trim().toLowerCase();
+  if (t === 'pk' || t === 'even' || t === '0') return 0;
+  if (!/^[+-]?\d+(\.\d+)?$/.test(t)) return null;
+  const n = Number(t);
+  return Math.abs(n) <= 40 && Number.isInteger(n * 2) ? n : null;
+}
+
+async function api(body) {
+  const res = await fetch(API, { method: 'POST', body: JSON.stringify(body) });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+// --- Talking to the sheet ---
+
+async function refresh() {
+  if (!login || busy || dialog.open) return;
+  clearTimeout(pollTimer);
+  await send({ action: 'state' }, { quiet: true });
+}
+
+async function send(body, { quiet = false } = {}) {
+  busy = true;
+  if (!quiet) render();
+  try {
+    const res = await api({ player: login.player, passcode: login.passcode, ...body });
+    if (res.auth) {
+      saveLogin(null);
+      state = null;
+      busy = false;
+      showLogin(res.error);
+      return;
+    }
+    if (res.day) state = res;
+    notice = res.ok ? '' : res.error || 'Something went wrong. Try again.';
+  } catch (e) {
+    notice = "Couldn't reach the sheet. Check your connection and try again.";
+  }
+  busy = false;
+  render();
+  schedulePoll();
+}
+
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  if (!state || document.hidden) return;
+  const d = state.day;
+  const waiting = d.status === 'picking' && d.turn !== state.you;
+  const live = d.picks.some(p => p.status === 'live');
+  const delay = waiting ? POLL_WAITING_MS : live ? POLL_LIVE_MS : 0;
+  if (delay) pollTimer = setTimeout(refresh, delay);
+}
+
+// --- Sign in ---
+
+async function showLogin(message) {
+  let who;
+  clearTimeout(pollTimer);
+  app.replaceChildren(h('p', { class: 'loading' }, 'Loading…'));
+  try {
+    who = await api({ action: 'who' });
+  } catch (e) {
+    app.replaceChildren(
+      h('div', { class: 'error', role: 'alert' }, "Couldn't reach the sheet. Check your connection."),
+      h('button', { class: 'primary', onclick: () => showLogin() }, 'Try again'),
+    );
+    return;
+  }
+  let chosen = null;
+  let error = message || '';
+  const draw = () => {
+    const isNew = chosen && who.unclaimed.includes(chosen);
+    const code = h('input', {
+      type: 'password', id: 'passcode', autocomplete: isNew ? 'new-password' : 'current-password', autocapitalize: 'off', spellcheck: 'false',
+    });
+    const form = chosen && h('form', {
+      onsubmit: async e => {
+        e.preventDefault();
+        const passcode = code.value;
+        const submit = form.querySelector('button[type=submit]');
+        submit.disabled = true;
+        try {
+          const res = await api({ action: isNew ? 'claim' : 'state', player: chosen, passcode });
+          if (!res.ok && !res.day) {
+            error = res.error;
+            who = await api({ action: 'who' });
+            draw();
+            return;
+          }
+          saveLogin({ player: chosen, passcode });
+          state = res;
+          notice = '';
+          render();
+          schedulePoll();
+        } catch (err) {
+          error = "Couldn't reach the sheet. Check your connection and try again.";
+          draw();
+        }
+      },
+    },
+      h('label', { for: 'passcode' }, isNew ? 'Set your passcode' : 'Your passcode'),
+      code,
+      isNew && h('p', { class: 'small muted', style: { 'margin-top': '6px' } },
+        'At least 6 characters, and not a password you use anywhere else. Only you will know it. This device remembers it.'),
+      h('button', { class: 'primary', type: 'submit' }, isNew ? 'Set passcode' : 'Sign in'),
+    );
+    app.replaceChildren(
+      h('div', { class: 'top' }, h('h1', {}, 'Slate Picks')),
+      error && h('div', { class: 'error', role: 'alert' }, error),
+      h('div', { class: 'card' },
+        h('h2', { style: { 'font-size': '20px', 'margin-bottom': '12px' } }, 'Who are you?'),
+        h('div', { class: 'names' }, who.players.map(p => h('button', {
+          class: 'name',
+          'aria-pressed': String(p === chosen),
+          onclick: () => { chosen = p; error = ''; draw(); },
+        }, p))),
+        form,
+      ),
+    );
+    if (chosen) code.focus();
+  };
+  draw();
+}
+
+// --- Main screen ---
+
+function scoreCard() {
+  const s = state.score;
+  const you = state.you;
+  const headline = !s.leader ? 'Tied' : s.leader === you ? 'You lead by ' + s.lead : s.leader + ' leads by ' + s.lead;
+  const lg = state.league;
+  return h('section', { class: 'card score', 'aria-label': 'Score' },
+    h('h2', {}, headline),
+    h('div', { class: 'row' },
+      h('span', {}, 'Slate points: ', h('b', {}, you + ' ' + s[you]), ', ', h('b', {}, state.other + ' ' + s[state.other])),
+      lg && lg[you] !== undefined && h('span', {}, 'League: ', h('b', {}, you + ' ' + lg[you]), ', ', h('b', {}, state.other + ' ' + lg[state.other])),
+    ),
+  );
+}
+
+function nextLine() {
+  const n = state.next;
+  if (!n) return h('p', { class: 'next' }, 'No more game days on the slate sheet.');
+  return h('p', { class: 'next' }, 'Next games: ' + dayOf(n.date) + '. ' + plural(n.count, 'game') + ', first tip ' + timeOf(n.firstTip) + '.');
+}
+
+function leftText(d) {
+  const you = state.you;
+  if (!d.left) return plural(d.remaining, 'pick') + ' left today.';
+  return plural(d.remaining, 'pick') + ' left: you have ' + d.left[you] + ', ' + state.other + ' has ' + d.left[state.other] + '.';
+}
+
+function statusCard() {
+  const d = state.day;
+  if (d.status === 'noGames') {
+    return h('section', { class: 'status plain', 'aria-live': 'polite' }, h('h2', {}, 'No games today'), nextLine());
+  }
+  if (d.status === 'done') {
+    const unused = d.total - d.made;
+    const title = d.made === 0 ? "Today's games have started"
+      : unused ? 'Picks are closed'
+      : 'All ' + plural(d.made, 'pick') + ' are in';
+    return h('section', { class: 'status plain', 'aria-live': 'polite' },
+      h('h2', {}, title),
+      d.made > 0 && unused > 0 && h('p', {}, 'No open games are left for the other ' + plural(unused, 'pick') + '.'),
+      nextLine());
+  }
+  const short = d.total - d.made - d.remaining;
+  const shortNote = short > 0 && h('p', { class: 'small' }, 'Only ' + plural(d.remaining, 'game') + " haven't started, so that's all that can be picked.");
+  if (!d.turn) {
+    return h('section', { class: 'status plain', 'aria-live': 'polite' },
+      h('h2', {}, 'Either of you can pick first'),
+      h('p', {}, leftText(d)),
+      h('p', { class: 'small muted' }, "The last slate isn't final yet, so there's no winner to open."),
+      shortNote);
+  }
+  const mine = d.turn === state.you;
+  return h('section', { class: 'status', style: { '--status': state.colors[d.turn] }, 'aria-live': 'polite' },
+    h('h2', {}, mine ? 'Your pick' : d.turn + "'s pick"),
+    h('p', {}, leftText(d)),
+    !mine && h('p', { class: 'small' }, 'This page updates on its own.'),
+    shortNote);
+}
+
+function canPick() {
+  const d = state.day;
+  return d.status === 'picking' && (!d.turn || d.turn === state.you) && !busy;
+}
+
+function sideButton(game, side, other, isHome) {
+  return h('button', {
+    class: 'side',
+    disabled: !canPick(),
+    onclick: () => openConfirm(game, side, other, isHome),
+  },
+    h('span', { class: 'team' }, side.name),
+    h('span', { class: 'spread' }, spreadText(side.spread)));
+}
+
+function gamesSection() {
+  const games = state.day.games.filter(g => g.available);
+  if (state.day.status !== 'picking' || !games.length) return null;
+  return [
+    h('div', { class: 'section-title' },
+      h('h3', {}, 'Open games'),
+      h('span', { class: 'small muted' }, 'DraftKings lines')),
+    games.map(g => h('div', { class: 'game' },
+      h('p', { class: 'tip' }, timeOf(g.tip)),
+      h('div', { class: 'sides' },
+        sideButton(g, g.away, g.home, false),
+        h('span', { class: 'at' }, 'at'),
+        sideButton(g, g.home, g.away, true)))),
+  ];
+}
+
+function resultChip(side, status) {
+  if (status === 'pre' || !side) return null;
+  if (side === 'Push') return h('span', { class: 'chip plain' }, status === 'live' ? 'Even' : 'Push');
+  const word = status === 'live' ? ' ahead' : ' right';
+  return h('span', { class: 'chip', style: { '--chip': state.colors[side] } }, side + word);
+}
+
+function pickRow(p, canUndo) {
+  const when = p.status === 'pre' ? (p.tip ? 'Tip ' + timeOf(p.tip) : null)
+    : p.status === 'live' ? [p.detail, p.score].filter(Boolean).join(' · ')
+    : p.score || p.result || 'Final';
+  return h('div', { class: 'pick' },
+    h('span', { class: 'bar', style: { '--bar': state.colors[p.picker] || 'var(--line)' } }),
+    h('span', { class: 'line' }, p.line),
+    resultChip(p.side, p.status),
+    h('span', { class: 'who' }, (p.picker ? p.picker + "'s pick" : 'Pick') + (when ? ' · ' + when : '')),
+    canUndo && h('button', {
+      class: 'undo',
+      disabled: busy,
+      onclick: () => send({ action: 'undo', expected: state.day.made }),
+    }, 'Undo'),
+  );
+}
+
+function tallyText(d) {
+  const you = state.you;
+  const other = state.other;
+  const t = d.tally;
+  if (t.pending === d.picks.length) return t.pending + ' to play';
+  if (t.pending) return you + ' ' + t[you] + ', ' + other + ' ' + t[other] + ', ' + t.pending + ' to play';
+  if (t[you] === t[other]) return 'Push ' + t[you] + '-' + t[other];
+  const winner = t[you] > t[other] ? you : other;
+  return winner + ' wins ' + Math.max(t[you], t[other]) + '-' + Math.min(t[you], t[other]);
+}
+
+function picksSection() {
+  const d = state.day;
+  if (!d.picks.length) return null;
+  return [
+    h('div', { class: 'section-title' },
+      h('h3', {}, "Today's picks"),
+      h('span', { class: 'small muted' }, tallyText(d))),
+    h('div', { class: 'card list' }, d.picks.map((p, i) => pickRow(p, d.canUndo && i === d.picks.length - 1))),
+  ];
+}
+
+function lastSlateSection() {
+  const last = state.lastSlate;
+  if (!last) return null;
+  const a = last.right[state.you];
+  const b = last.right[state.other];
+  const final = last.lines.every(l => l.side);
+  const result = !final ? 'not final yet'
+    : last.winner === 'Push' || !last.winner ? 'push ' + a + '-' + b
+    : last.winner + ' won ' + Math.max(a, b) + '-' + Math.min(a, b);
+  return h('details', { class: 'card', open: lastSlateOpen, ontoggle: e => { lastSlateOpen = e.target.open; } },
+    h('summary', {}, dayOf(last.date) + ': ' + result),
+    h('div', {}, last.lines.map(l => pickRow({
+      line: l.line, picker: l.picker, side: l.side, status: l.side ? 'final' : 'pre', result: l.result,
+    }, false))));
+}
+
+function render() {
+  if (!state) return;
+  const d = state.day;
+  const mine = d.status === 'picking' && (!d.turn || d.turn === state.you);
+  app.replaceChildren(...[
+    h('div', { class: 'top' },
+      h('h1', {}, 'Slate Picks · ' + dayOf(state.date)),
+      h('button', { class: 'link', onclick: signOut }, 'Sign out ' + state.you)),
+    notice && h('div', { class: 'error', role: 'alert' }, notice),
+    scoreCard(),
+    statusCard(),
+    mine ? [gamesSection(), picksSection()] : [picksSection(), gamesSection()],
+    state.lastSlate && h('div', { class: 'section-title' }, h('h3', {}, 'Last slate')),
+    lastSlateSection(),
+  ].flat(Infinity).filter(Boolean));
+}
+
+function signOut() {
+  clearTimeout(pollTimer);
+  saveLogin(null);
+  state = null;
+  notice = '';
+  showLogin();
+}
+
+// --- Confirming a pick ---
+
+function openConfirm(game, side, other, isHome) {
+  const fromEspn = side.spread !== null;
+  const input = h('input', {
+    type: 'text', id: 'spread', inputmode: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
+    placeholder: '+7.5', value: fromEspn ? spreadText(side.spread) : '',
+  });
+  const go = h('button', { class: 'primary', type: 'submit' });
+  const error = h('p', { class: 'small', role: 'alert', style: { color: 'var(--danger-ink)', 'margin-top': '6px' } });
+  const sync = () => {
+    const n = parseSpread(input.value);
+    go.textContent = n === null ? 'Enter a spread' : 'Lock in ' + side.name + ' ' + spreadText(n);
+    go.disabled = n === null;
+    error.textContent = input.value.trim() && n === null ? 'Use a half-point spread like +7.5, -3 or pk.' : '';
+  };
+  const step = delta => () => {
+    const n = parseSpread(input.value);
+    input.value = spreadText((n === null ? 0 : n) + delta);
+    sync();
+  };
+  input.addEventListener('input', sync);
+  dialog.replaceChildren(h('form', {
+    onsubmit: e => {
+      e.preventDefault();
+      const n = parseSpread(input.value);
+      if (n === null) return;
+      dialog.close();
+      send({ action: 'pick', team: side.name, spread: n, expected: state.day.made });
+    },
+  },
+    h('h2', {}, side.name + (isHome ? ' vs ' : ' at ') + other.name),
+    h('p', { class: 'small muted', style: { 'margin-top': '4px' } },
+      timeOf(game.tip) + (fromEspn ? '. DraftKings line through ESPN. Change it if yours differs.' : ". ESPN has no line yet, so enter yours.")),
+    h('label', { for: 'spread' }, side.name + ' spread'),
+    h('div', { class: 'stepper' },
+      h('button', { type: 'button', class: 'step', 'aria-label': 'Lower by half a point', onclick: step(-0.5) }, '−'),
+      input,
+      h('button', { type: 'button', class: 'step', 'aria-label': 'Raise by half a point', onclick: step(0.5) }, '+')),
+    error,
+    go,
+    h('button', { type: 'button', class: 'secondary', onclick: () => dialog.close() }, 'Cancel'),
+  ));
+  sync();
+  dialog.showModal();
+}
+
+dialog.addEventListener('close', schedulePoll);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refresh();
+  else clearTimeout(pollTimer);
+});
+
+if (login) refresh();
+else showLogin();
+</script>
+</body>
+</html>
