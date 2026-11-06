@@ -173,7 +173,12 @@
     font-weight: 700;
   }
   .primary:disabled { opacity: 0.55; }
+  .primary[aria-busy="true"]:disabled { opacity: 1; }
+  .spinner { display: inline-block; width: 1em; height: 1em; margin-right: 8px; vertical-align: -0.15em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { display: none; } }
 
+  dialog :disabled { opacity: 0.5; }
   dialog {
     width: min(440px, calc(100vw - 32px));
     padding: 16px;
@@ -206,12 +211,15 @@ const STORE_KEY = 'slate-picks-login';
 const STATE_KEY = 'slate-picks-state';
 const POLL_WAITING_MS = 30000;
 const POLL_LIVE_MS = 60000;
+// Outlasts the script's 20-second wait for its lock, so a slow answer isn't reported as a failure.
+const API_TIMEOUT_MS = 45000;
 
 const app = document.getElementById('app');
 const dialog = document.getElementById('confirm');
 let login = readLogin();
 let state = null;
 let notice = '';
+// The action waiting on the sheet, or false.
 let busy = false;
 // True while the screen shows data that may be out of date: the copy saved on this device,
 // or a page left open past midnight. Picks stay locked until the sheet answers.
@@ -274,6 +282,7 @@ function h(tag, props, ...kids) {
 const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
 const timeOf = iso => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 const dayOf = ymd => new Date(ymd + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+const spinner = () => h('span', { class: 'spinner', 'aria-hidden': 'true' });
 
 function spreadText(n) {
   if (n === null || n === undefined) return 'No line yet';
@@ -290,7 +299,7 @@ function parseSpread(text) {
 }
 
 async function api(body) {
-  const res = await fetch(API, { method: 'POST', body: JSON.stringify(body) });
+  const res = await fetch(API, { method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout?.(API_TIMEOUT_MS) });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
@@ -304,7 +313,7 @@ async function refresh() {
 }
 
 async function send(body, { quiet = false } = {}) {
-  busy = true;
+  busy = body.action;
   if (!quiet) render();
   try {
     const res = await api({ player: login.player, passcode: login.passcode, ...body });
@@ -553,7 +562,7 @@ function pickRow(p, canUndo) {
       class: 'undo',
       disabled: busy || showingSaved,
       onclick: () => send({ action: 'undo', expected: state.day.made }),
-    }, 'Undo'),
+    }, busy === 'undo' ? [spinner(), 'Undoing…'] : 'Undo'),
   );
 }
 
@@ -654,12 +663,18 @@ function openConfirm(game, side, other, isHome) {
   };
   input.addEventListener('input', sync);
   dialog.replaceChildren(h('form', {
-    onsubmit: e => {
+    onsubmit: async e => {
       e.preventDefault();
       const n = parseSpread(input.value);
       if (n === null) return;
+      // Stays open until the sheet answers, so the wait shows where the player just tapped.
+      dialog.querySelectorAll('input, button').forEach(el => { el.disabled = true; });
+      go.setAttribute('aria-busy', 'true');
+      go.replaceChildren(spinner(), 'Locking in ' + side.name + ' ' + spreadText(n) + '…');
+      await send({ action: 'pick', team: side.name, spread: n, expected: state.day.made });
       dialog.close();
-      send({ action: 'pick', team: side.name, spread: n, expected: state.day.made });
+      // A failed pick's message sits at the top of the page.
+      if (notice) window.scrollTo(0, 0);
     },
   },
     h('h2', {}, side.name + (isHome ? ' vs ' : ' at ') + other.name),
@@ -679,6 +694,8 @@ function openConfirm(game, side, other, isHome) {
 }
 
 dialog.addEventListener('close', schedulePoll);
+// A pick can't be called back once sent, so Esc and the back gesture wait for the answer too.
+dialog.addEventListener('cancel', e => { if (busy) e.preventDefault(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     clearTimeout(pollTimer);
