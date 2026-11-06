@@ -277,7 +277,7 @@ const dayOf = ymd => new Date(ymd + 'T12:00:00').toLocaleDateString([], { weekda
 
 function spreadText(n) {
   if (n === null || n === undefined) return 'No line yet';
-  if (n === 0) return 'pk';
+  if (n === 0) return 'EVEN';
   return (n > 0 ? '+' : '') + n;
 }
 
@@ -645,7 +645,7 @@ function openConfirm(game, side, other, isHome) {
     const n = parseSpread(input.value);
     go.textContent = n === null ? 'Enter a spread' : 'Lock in ' + side.name + ' ' + spreadText(n);
     go.disabled = n === null;
-    error.textContent = input.value.trim() && n === null ? 'Use a half-point spread like +7.5, -3 or pk.' : '';
+    error.textContent = input.value.trim() && n === null ? 'Use a half-point spread like +7.5, -3 or EVEN.' : '';
   };
   const step = delta => () => {
     const n = parseSpread(input.value);
