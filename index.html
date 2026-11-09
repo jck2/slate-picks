@@ -153,6 +153,7 @@
   .names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .name { min-height: 52px; background: transparent; border: 1.5px solid var(--line); border-radius: 10px; font-weight: 600; }
   .name[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .name:disabled, #passcode:disabled { opacity: 0.5; }
   input[type=text], input[type=password] {
     width: 100%;
     min-height: 48px;
@@ -375,7 +376,10 @@ async function showLogin(message) {
         e.preventDefault();
         const passcode = code.value;
         const submit = form.querySelector('button[type=submit]');
-        submit.disabled = true;
+        // Lock the whole screen, so a second tap or a name switch can't race this request.
+        app.querySelectorAll('input, button').forEach(el => { el.disabled = true; });
+        submit.setAttribute('aria-busy', 'true');
+        submit.replaceChildren(spinner(), isNew ? 'Setting passcode…' : 'Signing in…');
         try {
           const res = await api({ action: isNew ? 'claim' : 'state', player: chosen, passcode });
           if (!res.ok && !res.day) {
