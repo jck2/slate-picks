@@ -485,6 +485,13 @@ function statusCard() {
   if (d.status === 'noGames') {
     return h('section', { class: 'status plain', 'aria-live': 'polite' }, h('h2', {}, 'No games today'), nextLine());
   }
+  if (d.status === 'push') {
+    return h('section', { class: 'status plain', 'aria-live': 'polite' },
+      h('h2', {}, 'Today is a push'),
+      h('p', {}, "The picks weren't finished before the games tipped off, so nobody wins today."),
+      d.made > 0 && h('p', { class: 'small muted' }, 'The picks made so far are being cleared from the sheet.'),
+      nextLine());
+  }
   if (d.status === 'done') {
     const unused = d.total - d.made;
     const title = d.made === 0 ? "Today's games have started"
@@ -583,7 +590,7 @@ function tallyText(d) {
 
 function picksSection() {
   const d = state.day;
-  if (!d.picks.length) return null;
+  if (!d.picks.length || d.status === 'push') return null;
   return [
     h('div', { class: 'section-title' },
       h('h3', {}, "Today's picks"),
@@ -595,6 +602,11 @@ function picksSection() {
 function lastSlateSection() {
   const last = state.lastSlate;
   if (!last) return null;
+  if (last.unfinished) {
+    return h('details', { class: 'card', open: lastSlateOpen, ontoggle: e => { lastSlateOpen = e.target.open; } },
+      h('summary', {}, dayOf(last.date) + ': push, picks not finished'),
+      h('p', { class: 'small muted' }, "The picks weren't finished before the games tipped off, so the day was cleared."));
+  }
   const a = last.right[state.you];
   const b = last.right[state.other];
   const final = last.lines.every(l => l.side);
