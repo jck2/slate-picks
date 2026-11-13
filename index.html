@@ -766,7 +766,7 @@ async function turnOnPush() {
     if (!res.ok) throw new Error(res.error || 'the sheet turned it down');
     savePushMark(login.player + ' ' + easternDate() + ' ' + sub.endpoint);
     push.status = 'on';
-    push.message = 'Notifications are on for this phone. Send a test to check.';
+    push.message = 'Notifications are on for this phone. Send a test to see how each one looks.';
   } catch (e) {
     push.message = "Couldn't turn on notifications: " + (e && e.message ? e.message : e);
   } finally {
@@ -779,7 +779,9 @@ async function testPush() {
   let message;
   try {
     const res = await api({ action: 'pushTest', player: login.player, passcode: login.passcode });
-    message = res.ok ? 'Test sent. It should show up in a few seconds.' : res.error;
+    message = !res.ok ? res.error
+      : res.examples ? 'Sent ' + res.examples + ' example notifications with made-up games. They should show up in a few seconds.'
+      : 'Test sent. It should show up in a few seconds.';
   } catch (e) {
     message = "Couldn't reach the sheet. Check your connection and try again.";
   }
