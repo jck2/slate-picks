@@ -799,7 +799,7 @@ async function turnOffPush() {
   setPush({ busy: '', status: 'off', message: 'Notifications are off for this phone.' });
 }
 
-/** Clears the app badge and this page's notifications once the page is in view. */
+/** Clears the app badge and this page's notifications when the page is opened or comes back into view. */
 function clearNotices() {
   if (document.hidden) return;
   if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
@@ -839,9 +839,9 @@ function notifySection() {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', e => {
     if (!e.data || e.data.type !== 'push' || document.hidden) return;
-    // The page shows the news itself, so the banner can go.
+    // The page shows the news itself. The notification stays until the page is
+    // next opened, so a test sent from here can still be seen.
     refresh();
-    setTimeout(clearNotices, 1500);
   });
 }
 
