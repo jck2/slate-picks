@@ -253,7 +253,11 @@ function readLogin() {
 }
 function saveLogin(value) {
   login = value;
-  if (!value) showingSaved = false;
+  if (!value) {
+    showingSaved = false;
+    // The next player's notifications get checked fresh when they sign in.
+    Object.assign(push, { status: 'checking', busy: '', message: '' });
+  }
   try {
     if (value) {
       localStorage.setItem(STORE_KEY, JSON.stringify(value));
@@ -409,6 +413,7 @@ async function showLogin(message) {
           notice = '';
           render();
           schedulePoll();
+          checkPush();
         } catch (err) {
           error = "Couldn't reach the sheet. Check your connection and try again.";
           draw();
