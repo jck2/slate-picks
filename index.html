@@ -195,6 +195,11 @@
   .step { min-height: 48px; border: 1.5px solid var(--line); border-radius: 10px; background: transparent; font-weight: 700; }
   .secondary { width: 100%; min-height: 48px; margin-top: 8px; border: 0; background: transparent; color: var(--muted); }
   .loading { padding: 48px 0; text-align: center; color: var(--muted); }
+
+  .notify { margin-top: 20px; }
+  .notify h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .notify .actions { display: flex; gap: 20px; }
+  .notify .said { margin-top: 8px; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 </style>
 </head>
@@ -210,6 +215,8 @@ const API = location.hostname === 'localhost'
   : 'https://script.google.com/macros/s/AKfycbzAHpfSTPet60BGIOwJ2jESNG5vOXnS0TeqHS7FHazx_BF0ro8jjhPCMYDFelnRbkAYGg/exec';
 const STORE_KEY = 'slate-picks-login';
 const STATE_KEY = 'slate-picks-state';
+// Which phone and player the sheet was last told about, and when.
+const PUSH_KEY = 'slate-picks-push';
 const POLL_WAITING_MS = 30000;
 const POLL_LIVE_MS = 60000;
 // Outlasts the script's 20-second wait for its lock, so a slow answer isn't reported as a failure.
@@ -227,6 +234,13 @@ let busy = false;
 let showingSaved = false;
 let pollTimer = null;
 let lastSlateOpen = false;
+// Notifications on this phone. status: checking, on, off, blocked, install (an iPhone
+// that needs the page on its Home Screen first), unsupported or unavailable.
+const push = { status: 'checking', busy: '', message: '' };
+const pushCapable = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// The service worker shows the notifications. Null when this browser has none.
+const swReady = 'serviceWorker' in navigator ? navigator.serviceWorker.register('sw.js').catch(() => null) : Promise.resolve(null);
 // Wide screens show the roster card beside the picks, open by default. After that, the
 // viewer's own toggle sticks.
 const sideColumn = window.matchMedia('(min-width: 900px)');
@@ -329,6 +343,7 @@ async function send(body, { quiet = false } = {}) {
       state = res;
       showingSaved = false;
       saveState(res);
+      checkPush();
     }
     notice = res.ok ? '' : res.error || 'Something went wrong. Try again.';
   } catch (e) {
@@ -638,6 +653,7 @@ function render() {
       state.lastSlate && h('div', { class: 'section-title' }, h('h3', {}, 'Last slate')),
       lastSlateSection(),
     ],
+    notifySection(),
   ].flat(Infinity).filter(Boolean);
   app.replaceChildren(...[
     h('div', { class: 'top' },
@@ -650,10 +666,183 @@ sideColumn.addEventListener('change', render);
 
 function signOut() {
   clearTimeout(pollTimer);
+  // This phone stops getting the player's notifications.
+  dropPush(login);
   saveLogin(null);
   state = null;
   notice = '';
   showLogin();
+}
+
+// --- Notifications ---
+
+function fromB64url(text) {
+  const bin = atob(text.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((text.length + 3) % 4));
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+/** True when the phone's subscription was made with the sheet's current key. */
+function sameKey(sub, key) {
+  const used = sub.options && sub.options.applicationServerKey;
+  if (!used) return true;
+  const a = new Uint8Array(used);
+  const b = fromB64url(key);
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
+function readPushMark() {
+  try { return localStorage.getItem(PUSH_KEY); } catch (e) { return null; }
+}
+function savePushMark(value) {
+  try {
+    if (value) localStorage.setItem(PUSH_KEY, value);
+    else localStorage.removeItem(PUSH_KEY);
+  } catch (e) { /* The page just tells the sheet again next time. */ }
+}
+
+function setPush(changes) {
+  Object.assign(push, changes);
+  render();
+}
+
+/**
+ * Works out whether this phone gets notifications. A signed-up phone is sent to the
+ * sheet once a day, so the sheet keeps it even if the push service moves it.
+ */
+async function checkPush() {
+  let status;
+  try {
+    if (!pushCapable) status = isIos ? 'install' : 'unsupported';
+    else if (!state || !state.pushKey) status = 'unavailable';
+    else if (Notification.permission === 'denied') status = 'blocked';
+    else {
+      const reg = await swReady;
+      const sub = reg && await reg.pushManager.getSubscription();
+      if (!reg) status = 'unsupported';
+      else if (!sub || Notification.permission !== 'granted') status = 'off';
+      else if (!sameKey(sub, state.pushKey)) {
+        // The sheet has a new key, so this phone signs up again.
+        await sub.unsubscribe();
+        status = 'off';
+      } else {
+        status = 'on';
+        const mark = login.player + ' ' + easternDate() + ' ' + sub.endpoint;
+        if (readPushMark() !== mark) {
+          api({ action: 'pushOn', player: login.player, passcode: login.passcode, subscription: sub.toJSON() })
+            .then(res => { if (res.ok) savePushMark(mark); })
+            .catch(() => { /* Tried again on the next state. */ });
+        }
+      }
+    }
+  } catch (e) {
+    status = push.status === 'checking' ? 'off' : push.status;
+  }
+  if (status !== push.status) setPush({ status });
+}
+
+async function turnOnPush() {
+  setPush({ busy: 'on', message: '' });
+  try {
+    // First, while the tap still counts: iPhones only ask from a tap.
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      push.status = permission === 'denied' ? 'blocked' : 'off';
+      return;
+    }
+    if (!await swReady) throw new Error("this browser couldn't start the notification worker");
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && !sameKey(sub, state.pushKey)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromB64url(state.pushKey) });
+    const res = await api({ action: 'pushOn', player: login.player, passcode: login.passcode, subscription: sub.toJSON() });
+    if (!res.ok) throw new Error(res.error || 'the sheet turned it down');
+    savePushMark(login.player + ' ' + easternDate() + ' ' + sub.endpoint);
+    push.status = 'on';
+    push.message = 'Notifications are on for this phone. Send a test to check.';
+  } catch (e) {
+    push.message = "Couldn't turn on notifications: " + (e && e.message ? e.message : e);
+  } finally {
+    setPush({ busy: '' });
+  }
+}
+
+async function testPush() {
+  setPush({ busy: 'test', message: '' });
+  let message;
+  try {
+    const res = await api({ action: 'pushTest', player: login.player, passcode: login.passcode });
+    message = res.ok ? 'Test sent. It should show up in a few seconds.' : res.error;
+  } catch (e) {
+    message = "Couldn't reach the sheet. Check your connection and try again.";
+  }
+  setPush({ busy: '', message });
+}
+
+/** Stops `who`'s notifications to this phone. Best effort: the sheet also drops dead phones itself. */
+async function dropPush(who) {
+  savePushMark(null);
+  try {
+    const reg = await swReady;
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (!sub) return;
+    if (who) await api({ action: 'pushOff', player: who.player, passcode: who.passcode, endpoint: sub.endpoint }).catch(() => null);
+    await sub.unsubscribe();
+  } catch (e) { /* Nothing more to do. */ }
+}
+
+async function turnOffPush() {
+  setPush({ busy: 'off', message: '' });
+  await dropPush(login);
+  setPush({ busy: '', status: 'off', message: 'Notifications are off for this phone.' });
+}
+
+/** Clears the app badge and this page's notifications once the page is in view. */
+function clearNotices() {
+  if (document.hidden) return;
+  if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+  swReady.then(reg => reg && reg.getNotifications())
+    .then(list => (list || []).forEach(n => n.close()))
+    .catch(() => {});
+}
+
+const PUSH_TEXT = {
+  on: "On for this phone: you'll hear when it's your turn and when a game day starts.",
+  off: "Get a notification on this phone when it's your turn and when a game day starts.",
+  install: 'On iPhone, notifications need this page on your Home Screen. In Safari, tap Share, then Add to Home Screen, then open Picks from there.',
+  blocked: "Notifications are blocked for this page. Allow them in your phone's settings, then reopen the page.",
+  unsupported: "This browser can't show notifications from the page. On Android, use Chrome.",
+  unavailable: "The sheet can't send notifications right now.",
+};
+
+function notifySection() {
+  if (push.status === 'checking') return null;
+  const busy = !!push.busy;
+  let actions = null;
+  if (push.status === 'off') {
+    actions = h('button', { class: 'primary', disabled: busy, 'aria-busy': push.busy === 'on' ? 'true' : null, onclick: turnOnPush },
+      push.busy === 'on' ? [spinner(), 'Turning on…'] : 'Turn on notifications');
+  } else if (push.status === 'on') {
+    actions = h('div', { class: 'actions' },
+      h('button', { class: 'link', disabled: busy, onclick: testPush }, push.busy === 'test' ? 'Sending…' : 'Send a test'),
+      h('button', { class: 'link', disabled: busy, onclick: turnOffPush }, push.busy === 'off' ? 'Turning off…' : 'Turn off'));
+  }
+  return h('section', { class: 'card notify' },
+    h('h3', {}, 'Notifications'),
+    h('p', { class: 'small muted' }, PUSH_TEXT[push.status]),
+    actions,
+    push.message && h('p', { class: 'small said', role: 'status' }, push.message));
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (!e.data || e.data.type !== 'push' || document.hidden) return;
+    // The page shows the news itself, so the banner can go.
+    refresh();
+    setTimeout(clearNotices, 1500);
+  });
 }
 
 // --- Confirming a pick ---
@@ -717,6 +906,7 @@ document.addEventListener('visibilitychange', () => {
     clearTimeout(pollTimer);
     return;
   }
+  clearNotices();
   if (state && state.date !== easternDate()) {
     showingSaved = true;
     render();
@@ -724,6 +914,7 @@ document.addEventListener('visibilitychange', () => {
   refresh();
 });
 
+clearNotices();
 if (login) {
   // The request goes first, so a saved copy that fails to draw can't stop the fresh data.
   refresh();
@@ -732,6 +923,7 @@ if (login) {
     state = saved;
     showingSaved = true;
     render();
+    checkPush();
   }
 } else {
   showLogin();
