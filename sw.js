@@ -17,7 +17,6 @@ self.addEventListener('push', event => {
     // An open page refreshes itself right away instead of waiting for its next poll.
     const pages = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     pages.forEach(page => page.postMessage({ type: 'push' }));
-    if (self.navigator.setAppBadge) self.navigator.setAppBadge().catch(() => {});
     // Every push must show a notification; iPhones stop delivering to pages that skip one.
     await self.registration.showNotification(msg.title || 'Slate Picks', {
       body: msg.body || '',
@@ -27,8 +26,23 @@ self.addEventListener('push', event => {
       icon: 'icon-180.png',
       badge: 'badge-96.png',
     });
+    await setBadge();
   })());
 });
+
+/**
+ * Sets the Home Screen icon's badge to the number of this page's notifications on
+ * the phone, or 1 when the phone can't count them. iPhones show only numbered
+ * badges and ignore setAppBadge() without a number. Opening the page clears it.
+ */
+async function setBadge() {
+  if (!self.navigator.setAppBadge) return;
+  let count = 1;
+  try {
+    count = Math.max(1, (await self.registration.getNotifications()).length);
+  } catch (e) { /* Keep 1. */ }
+  await self.navigator.setAppBadge(count).catch(() => {});
+}
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
